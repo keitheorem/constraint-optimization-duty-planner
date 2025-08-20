@@ -4,6 +4,7 @@ This repository provides a duty scheduling system built on a point-based framewo
 The planner ensures fair distribution of duties among staff while respecting constraints such as availability and workload balance.
 
 duty_planner.py - python script of the aforementioned. 
-Template.xlsx - example template of the input excel required 
+
+Template.xlsx - example template of the input excel required. 
 
 Try the colab version at: https://colab.research.google.com/drive/14h-zG9mEOG_Wq6zmoUgcTRQkYVIFHJQM?usp=sharing
