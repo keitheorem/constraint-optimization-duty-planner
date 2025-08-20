@@ -1,6 +1,6 @@
 # constraint-optimization-duty-planner
 
-This repository contains a duty planning system that uses a point-based allocation model combined with constraint optimization techniques.
+This repository provides a duty scheduling system built on a point-based framework and developed using the concept of constraint optimization.
 The planner ensures fair distribution of duties among staff while respecting constraints such as availability and workload balance.
 
 duty_planner.py - python script of the aforementioned. 
