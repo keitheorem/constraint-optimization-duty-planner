@@ -5,23 +5,31 @@ from ortools.sat.python import cp_model
 import sys
 import math
 from collections import defaultdict
-
-# === ACCEPT INPUTS ===
-# Ask user for Public Holiday dates which will also mark the eve in the subsequent code
-ph_input = input("Enter Public Holiday dates ( / separated, e.g. 5/19): ").strip()
-public_holidays = set()
-if ph_input:
-    try:
-        public_holidays = {int(day.strip()) for day in ph_input.split('/') if day.strip().isdigit()}
-    except ValueError:
-        print("Invalid PH input. Ignoring Public Holidays.")
+import holidays
 
 # User-tweakable scale for decimal precision
 # scale = 1000 -> preserves up to 3 decimal places (e.g. 1.5 -> 1500)
 SCALE = 1000
 
 # Load data from template Excel: Name | On Leave/Course | Current Score
-staff_df = pd.read_excel("Template.xlsx", sheet_name='Sheet1')  # Update excel or sheet name if needed
+excel_file = "Template.xlsx"
+sheet_name = 'Sheet1'
+required_columns = ["Name", "On Leave/Course", "Current Score"]
+
+try:
+    staff_df = pd.read_excel(excel_file, sheet_name=sheet_name)
+    # Check if required columns exist after loading
+    if not all(col in staff_df.columns for col in required_columns):
+        missing_cols = [col for col in required_columns if col not in staff_df.columns]
+        print(f"Error: Missing required columns in '{excel_file}' - '{sheet_name}': {missing_cols}", file=sys.stderr)
+        sys.exit(1) # Exit if required columns are missing
+except FileNotFoundError:
+    print(f"Error: The file '{excel_file}' was not found.", file=sys.stderr)
+    sys.exit(1) # Exit if file not found
+except Exception as e:
+    print(f"Error reading Excel file '{excel_file}' - '{sheet_name}': {e}", file=sys.stderr)
+    sys.exit(1) # Exit on other reading errors
+
 
 # Detect frozen names from "On Leave/Course" column
 frozen_names = set(
@@ -31,22 +39,41 @@ frozen_names = set(
     ].str.strip().str.lower()
 )
 
+# === USER INPUT FOR DUTY MONTH ===
+month_input = input("Enter duty month and year (MM-YYYY): ").strip()
+
+try:
+    duty_month, duty_year = map(int, month_input.split('-'))
+    start_date = datetime(duty_year, duty_month, 1)
+except Exception:
+    print("⚠️ Invalid format, using current month.")
+    now = datetime.now()
+    start_date = datetime(now.year, now.month, 1)
+    duty_month, duty_year = start_date.month, start_date.year
+
+last_day = calendar.monthrange(duty_year, duty_month)[1]
+end_date = datetime(duty_year, duty_month, last_day)
+
+# Get Singapore public holidays for the current year
+sg_holidays = holidays.Singapore(years=[duty_year, duty_year + 1])
+
+# Extract the day-of-month for holidays within this month
+public_holidays = {d.day for d in sg_holidays if d.year == duty_year and d.month == duty_month}
+
+print(f"Public Holidays in {duty_month:02d}-{duty_year}: {sorted(public_holidays)}")
+
+# Check if 1st of next month is a PH
+next_month = duty_month + 1 if duty_month < 12 else 1
+next_year = duty_year if duty_month < 12 else duty_year + 1
+first_next_month = datetime(next_year, next_month, 1)
+
+last_day_is_ph_eve = first_next_month in sg_holidays
+print(f"Last day ({last_day}) is PH Eve? {last_day_is_ph_eve}")
+
 # === ASSIGN POINTS TO DAYS ===
-# get current date
-now = datetime.now()
-start_date = datetime(now.year, now.month, 1)
-last_day = calendar.monthrange(now.year, now.month)[1]
-end_date = datetime(now.year, now.month, last_day)
-days = pd.date_range(start=start_date, end=end_date)
-
-# Ask if last day of month is a Public Holiday Eve -> note it will overwrite if the last day is a weekend
-ph_eve_last_day_input = input(f"Is the last day of the month ({last_day}) a Public Holiday Eve? (y/n): ").strip().lower()
-last_day_is_ph_eve = (ph_eve_last_day_input == 'y')
-
-# creates a list of format [Full Date/Time,
-#  Day (0 = Monday),
-#  Points (float before scaling)]
+# creates a list of format [Full Date/Time, Day (0 = Monday), Points (float before scaling)] -> duty_days
 # - Note weekdays Mon-Thu = 1 point, Fri = 1.5, weekends = 2 points
+days = pd.date_range(start=start_date, end= end_date)
 duty_days = []
 for d in days:
     wd = d.weekday()  # Monday=0 ... Sunday=6
@@ -254,14 +281,24 @@ if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             if too_close:
                 continue
 
+            # Check the 4-day gap from previous standby duties
+            # This requires tracking standby duties for each person, similar to actual_duties
+            # For now, this check is omitted to simplify, but could be added if needed
+            # standby_too_close = any(abs((duty_date - sd).days) < 4 for sd in standby_duties[cand_lower])
+            # if standby_too_close:
+            #     continue
+
             # Assign standby
             standby_schedule.append({
                 "Date": duty_date.strftime("%Y-%m-%d"),
                 "Standby": candidate
             })
             standby_counts[candidate] += 1
+            # If assigned, add to standby_duties for future 4-day gap checks (if implemented)
+            # standby_duties[cand_lower].append(duty_date)
             assigned = True
             break
+
 
         if not assigned:
             standby_schedule.append({
@@ -294,8 +331,10 @@ if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
       # Add (Frozen) next to names that were frozen for this month
       score_df.loc[score_df["Name"].str.lower() == frozen_name, "Name"] = str(frozen_name).upper() + " (Frozen)"
 
+
     # Update scaled down average month points
-    score_df.loc[0, "Average Duty Score"] = avg_month_points / 1000
+    if len(score_df) > 0:
+        score_df.loc[0, "Average Duty Score"] = avg_month_points / 1000
 
     # Merge standby names into schedule_df
     schedule_df["Standby"] = [entry["Standby"] for entry in standby_schedule]
