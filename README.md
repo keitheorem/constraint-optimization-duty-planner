@@ -16,8 +16,7 @@ git clone https://github.com/keitheorem/constraint-optimization-duty-planner
 ```
 ## Install the necessary libraries
 ```bash
-pip install ortools
-pip install holidays
+pip install pandas ortools holidays
 ```
 ## Run the script
 ```bash
