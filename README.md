@@ -8,3 +8,12 @@ duty_planner.py - python script of the aforementioned.
 Template.xlsx - example template of the input excel required. 
 
 Try the colab version at: https://colab.research.google.com/drive/14h-zG9mEOG_Wq6zmoUgcTRQkYVIFHJQM?usp=sharing
+
+```bash
+pip install ortools
+pip install holidays
+```
+
+```bash
+python3 duty_planner.py
+```
